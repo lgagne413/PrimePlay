@@ -2,6 +2,13 @@ import time
 import itertools as it
 from math import *
 
+#Notes
+#probability of prime = 1/log n
+#prime factors log log n
+#log n average gap size
+#gap between primes at least m! to m!+m - reduce m! to lcm
+#primorials conjecture - most frequent gaps
+
 #naieve approach.  check each number for divisibility of each known prime
 class findprime0(object):
   def __init__(self):
