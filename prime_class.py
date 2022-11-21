@@ -63,27 +63,30 @@ class BasePrime():
                 self.upsert_db(p,t)
         self.summary()
         return True
-    def summary(self):
+    def summary(self, table = True):
 
         print('Summary:')
         qty = self.get_num_prime(self.prime_limit)
         count, time = self.get_sum_prime(self.prime_limit)
+        time = round(time/10**3,3)
 
         print('Primes Qty - {}'.format(qty))
         print('Primes Count - {}'.format(count))
         print('Primes Time - {}'.format(time))
-        print('Per Count - {}'.format(round(time/count,1)))
-        print('Per Qty - {}'.format(round(qty/count,1)))
-        rmod=0
-        plist = self.get_sub_prime(self.prime_limit)
-        for i in range(0,len(plist),2):
-            max_width = 50
+        if time!=0:
+            print('Count per Time - {}'.format(round(count/time,3)))
+            print('Qty per Time - {}'.format(round(qty/time,3)))
+        if table:
+            rmod=0
+            plist = self.get_sub_prime(self.prime_limit)
+            for i in range(0,len(plist),2):
+                max_width = 50
 
-            if i+1<len(plist):
-                space = max_width - len(str(plist[i]))
-                print("{}{}{}".format(plist[i],' '*space,plist[i+1]))
-            else:
-                print("{}".format(plist[i]))
+                if i+1<len(plist):
+                    space = max_width - len(str(plist[i]))
+                    print("{}{}{}".format(plist[i],' '*space,plist[i+1]))
+                else:
+                    print("{}".format(plist[i]))
 
 class SimplePrime(BasePrime):
     def __init__(self, prime_limit = 100, overwrite = True):
@@ -133,6 +136,7 @@ class PrimePair():
         aprod = np.product(self.pair[0])
         bprod = np.product(self.pair[1])
         element_cap = 10**20
+        self.carried = 1
 
         for x in range(self.plen):
             if x < self.breaker:
@@ -143,16 +147,23 @@ class PrimePair():
 
     def __str__(self):
         return self.pair
+    def get_log_ratio(self):
+        num = np.product(self.pair[0]) + np.product(self.pair[1])
+        den = np.product(self.p)
+        return round(num / den,3)
     def carry(self,tolflag):
-        self.e[1]+=1
+        # TODO edit tolflag
+        carryflag= False
+        if not tolflag: self.e[1]+=1
         for x in range(1,self.plen):
-            if self.e[x] > self.emax[x] or (tolflag and self.e[x]>1):
-                if x+1>=self.plen:return True
+            if self.e[x] > self.emax[x] or (tolflag and (self.e[x]>1 or x+1 == self.plen)):
+                if x+1>=self.plen:return True, True
                 self.e[x] = 1
                 self.e[x+1] += 1
                 tolflag=False
-
-        return False
+                carryflag = True
+        #endflag, carryflag
+        return False, carryflag
 
 
     def calculate(self, e = False):
@@ -174,15 +185,34 @@ class PrimePair():
                 outa*=self.p[x]**e[x]
             else:
                 outb*=self.p[x]**e[x]
-        if (outb-self.constraint)/outa <=0:
-            xmin = 1
-        else: xmin = log_b(self.p[0],(outb-self.constraint)/outa)
-        if (outb+self.constraint)/outa <=0:
-            xmax = 0
-        else: xmax = log_b(self.p[0],(outb+self.constraint)/outa)
-        #print('Bounds ',xmax,xmin)
 
-        return max(1,m.ceil(xmin)), max(0,m.floor(xmax)), xmax-xmin < self.tol
+        # get ranges -K1 -> -K0 and K0 -> K1
+        xrange = []
+        kn1_in = (outb-self.constraint)/outa
+        k1_in = (outb+self.constraint)/outa
+        kn0_in = (outb-self.big_prime - 1)/outa
+        k0_in = (outb+self.big_prime + 1)/outa
+
+        if kn1_in <=0:  kn1 = 1
+        else: kn1 = log_b(2,kn1_in)
+        if kn0_in <=0:  kn0 = 1
+        else: kn0 = log_b(2,kn0_in)
+
+        if k0_in <=0:  k0 = 0
+        else: k0 = log_b(2,k0_in)
+        if k1_in <=0:  k1 = 0
+        else: k1 = log_b(2,k1_in)
+
+        for n in range(max(1,m.ceil(kn1)), 1+max(0,m.floor(kn0))):
+            xrange.append(n)
+        for n in range(max(1,m.ceil(k0)), 1+max(0,m.floor(k1))):
+            xrange.append(n)
+        #print(k1,kn1,k1-kn1,self.tol)
+
+        # TODO edit tolflag
+        k1-kn1 < self.tol
+
+        return xrange, len(xrange)<1
     def check_out(self, out):
         out = abs(out)
         if  out > 1 and out < self.constraint:
@@ -190,24 +220,26 @@ class PrimePair():
             return True
         return False
     def run(self):
-        print('Running for ',self.pair)
+        #print('Running for ',self.pair)
+        loop_count = 0
         end_flag = False
         while not end_flag:
-            xmin,xmax, tolflag = self.get_bounds()
-            #print(xmin,xmax)
-            #print(self.p,self.e,self.emax)
-            if xmin <= xmax:
+            xrange, tolflag = self.get_bounds()
+            #print(f"\tLoop {loop_count}: bound range {len(xrange)}, tolflag {tolflag}, exp {self.e}")
 
-                for x in range(xmin,xmax+1):
-                    self.e[0] = x
-                    out = self.calculate()
-                    #print(self.p,self.e,out)
-                    self.check_out(out)
+            for x in xrange:
+                self.e[0] = x
+                out = self.calculate()
+                #print(f"\t\tRange Summary: {self.p} {self.e} = {out}")
+                self.check_out(out)
+            self.e[0] = 1
 
-            end_flag=self.carry(tolflag)
+            loop_count+=1
+            end_flag, carryflag=self.carry(tolflag)
+            if carryflag:self.carried +=1
 
 
-        print('Found' ,self.ps)
+        print(f"Found {len(self.ps)} ({self.get_log_ratio()}) Primes for {self.pair} in {loop_count} loops" )
         return self.ps
 
 class LucasPrime(BasePrime):
@@ -221,7 +253,7 @@ class LucasPrime(BasePrime):
         # self.db_conn.execute(q.CREATE_LUCAS_TABLE_INITIAL)
         # self.db_conn.commit()
     def comb_list(self):
-      #print("Finding Combinations")
+
       self.comb_counter+=1
       primes=[row[0] for row in self.get_n_small_prime(self.comb_counter)]
 
@@ -230,14 +262,16 @@ class LucasPrime(BasePrime):
                 for v in l]
 
       calclist = [PrimePair((comblist[r],comblist[::-1][r]),self.db_conn) for r in range(0,int(len(comblist)/2))]
-      #print('calclist')
+      print("Finding Combinations ", len(calclist))
       #[print(x.pair) for x in calclist]
       return calclist
 
     def find_primes(self):
-      #print("Finding Primes")
+
       pair_list = self.comb_list()
       ps = []
       for pair in pair_list:
-          ps+=pair.run()
+          np = pair.run()
+          ps+= np
+
       return ps
