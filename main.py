@@ -1,7 +1,5 @@
-import apps
-import time
-t0=time.process_time()
-app = apps.findprime3()
-app.run()
-time.process_time()
-del app
+import prime_class as pc
+
+if __name__ == '__main__':
+    p_simple = pc.LucasPrime(100)
+    p_simple.run()
